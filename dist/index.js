@@ -1,90 +1,70 @@
-import express from 'express';
-import nodemailer from 'nodemailer';
-const app = express();
-const users = [];
-import jwt from 'jsonwebtoken';
-import { Resend } from 'resend';
-const resend = new Resend('re_9dz9Fsnr_6nKWMn9U4mX7khQ99bKdJ7t6');
-const JWT_PASSWORD = "HELLO BHAIYA !";
-app.use(express.json());
-const myHeaders = new Headers(); // Currently empty
-app.post('/api/v1/signup', async (req, res) => {
+import WebSocket from 'ws';
+import { createClient } from 'redis';
+//btc
+const client = createClient();
+async function startServer() {
+    console.log("there is some problem her");
     try {
-        const email = req.body.email;
-        users.push({
-            email: email
-        });
-        const token = jwt.sign(email, JWT_PASSWORD);
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.resend.com',
-            secure: true,
-            port: 465,
-            auth: {
-                user: 'resend',
-                pass: 're_9dz9Fsnr_6nKWMn9U4mX7khQ99bKdJ7t6',
-            },
-        });
-        const info = await transporter.sendMail({
-            from: 'onboarding@resend.dev',
-            to: email,
-            subject: 'Hello World',
-            html: " here is you magic link " + "http://localhost:5173/" + token,
-        });
-        console.log("fuck it worked , info " + info);
-        // resend.emails.send({ 
-        //     from: 'onboarding@resend.dev',
-        //     to: 'amritbarsiphone@gmail.com',
-        //     subject: 'Hello World',
-        //     html: '<p>Congrats on sending your <strong>first email</strong>!</p>'
-        // })
-        myHeaders.set('authorisation', token);
-        res.status(200).json("please check ur email");
+        await client.connect();
+        console.log("connected to redis");
     }
     catch (err) {
-        res.status(403).json("something went wrong" + err);
+        console.error("something went wrong " + err);
+    }
+}
+startServer();
+let arr = [];
+const ws_btc = new WebSocket('wss://ws.backpack.exchange');
+//solana
+const ws_sol = new WebSocket('wss://ws.backpack.exchange');
+const ws_eth = new WebSocket('wss://ws.backpack.exchange');
+ws_btc.on('error', console.error);
+ws_btc.on('open', function open() {
+    ws_btc.send('{"method":"SUBSCRIBE","params":["trade.BTC_USDC"],"id":3}');
+});
+ws_sol.on('open', function open() {
+    ws_sol.send('{"method":"SUBSCRIBE","params":["trade.SOL_USDC"],"id":3}');
+});
+ws_eth.on('open', function open() {
+    ws_eth.send('{"method":"SUBSCRIBE","params":["trade.ETH_USDC"],"id":3}');
+});
+ws_btc.on('message', async function message(data) {
+    const message = JSON.parse(data.toString());
+    const maindata = message.data;
+    console.log('received: %s', JSON.stringify(maindata));
+    arr.push({
+        asset: 'BTC',
+        price: parseInt((maindata.p * 10000).toString()),
+        decimal: 4
+    });
+});
+ws_sol.on('message', async function message(data) {
+    const message = JSON.parse(data.toString());
+    const maindata = message.data;
+    console.log('received: %s', JSON.stringify(maindata));
+    arr.push({
+        asset: 'SOL',
+        price: parseInt((maindata.p * 10000000).toString()),
+        decimal: 7
+    });
+});
+ws_eth.on('message', async function message(data) {
+    const message = JSON.parse(data.toString());
+    const maindata = message.data;
+    console.log('received: %s', JSON.stringify(maindata));
+    arr.push({
+        asset: 'ETH',
+        price: parseInt((maindata.p * 1000000).toString()),
+        decimal: 6
+    });
+});
+setInterval(async () => {
+    if (arr.length > 0) {
+        await client.publish("trades", JSON.stringify(arr));
+        console.log("published the data " + JSON.stringify(arr));
+        arr = [];
     }
     ;
-});
-app.post('/api/v1/signin', async (req, res) => {
-    try {
-        const email = req.body.email;
-        //@ts-ignore
-        const user = users.find(u => u.email === email);
-        if (user) {
-            const token = jwt.sign(email, JWT_PASSWORD);
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.resend.com',
-                secure: true,
-                port: 465,
-                auth: {
-                    user: 'resend',
-                    pass: 're_9dz9Fsnr_6nKWMn9U4mX7khQ99bKdJ7t6',
-                },
-            });
-            const info = await transporter.sendMail({
-                from: 'onboarding@resend.dev',
-                to: email,
-                subject: 'Hello World',
-                html: " here is you magic link " + "http://localhost:5173/" + token,
-            });
-            console.log("fuck it worked , info " + info);
-            // resend.emails.send({ 
-            //     from: 'onboarding@resend.dev',
-            //     to: 'amritbarsiphone@gmail.com',
-            //     subject: 'Hello World',
-            //     html: '<p>Congrats on sending your <strong>first email</strong>!</p>'
-            // })
-            res.status(200).json("please check ur email");
-            res.status(200).json("please check ur email");
-        }
-        else {
-            res.status(403).json("user not found");
-        }
-    }
-    catch (err) {
-        res.status(403).json("something went wrong" + err);
-    }
-    ;
-});
-app.listen(3000);
+}, 100);
+//setInterval - send message every 100 mili second 
 //# sourceMappingURL=index.js.map
